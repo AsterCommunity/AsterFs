@@ -2,6 +2,7 @@
 
 use aster_fs::{available_space, FileExt};
 use std::fs::OpenOptions;
+use std::io::{Read, Seek, SeekFrom, Write};
 
 const LARGE_RESERVATION_BYTES: u64 = 128 * 1024 * 1024;
 
@@ -27,6 +28,8 @@ fn large_reservation_is_fully_allocated() {
 
 #[test]
 fn sparse_existing_file_recovers_missing_physical_allocation() {
+  const MARKER: [u8; 4096] = [0x5a; 4096];
+
   let directory = tempfile::TempDir::with_prefix("aster-fs-apple-recovery").unwrap();
   let path = directory.path().join("reservation.bin");
   let mut file = OpenOptions::new()
@@ -36,18 +39,29 @@ fn sparse_existing_file_recovers_missing_physical_allocation() {
     .open(path)
     .unwrap();
   file.set_len(LARGE_RESERVATION_BYTES).unwrap();
-  std::io::Write::write_all(&mut file, &[0_u8; 4096]).unwrap();
+  file
+    .seek(SeekFrom::Start(LARGE_RESERVATION_BYTES - 4096))
+    .unwrap();
+  file.write_all(&MARKER).unwrap();
   file.sync_all().unwrap();
   let partial_allocation = FileExt::allocated_size(&file).unwrap();
   assert!(partial_allocation < LARGE_RESERVATION_BYTES);
+  file.seek(SeekFrom::Start(12_345)).unwrap();
 
   FileExt::allocate(&file, LARGE_RESERVATION_BYTES).unwrap();
 
+  assert_eq!(file.stream_position().unwrap(), 12_345);
   assert_eq!(file.metadata().unwrap().len(), LARGE_RESERVATION_BYTES);
   assert!(
     FileExt::allocated_size(&file).unwrap() >= LARGE_RESERVATION_BYTES,
     "Apple allocation must fill the missing physical reservation",
   );
+  file
+    .seek(SeekFrom::Start(LARGE_RESERVATION_BYTES - 4096))
+    .unwrap();
+  let mut marker = [0_u8; 4096];
+  file.read_exact(&mut marker).unwrap();
+  assert_eq!(marker, MARKER);
 }
 
 #[test]
@@ -72,4 +86,50 @@ fn insufficient_space_is_all_or_nothing_on_limited_volume() {
   assert_eq!(error.raw_os_error(), Some(libc::ENOSPC));
   assert_eq!(file.metadata().unwrap().len(), 0);
   assert_eq!(FileExt::allocated_size(&file).unwrap(), 0);
+}
+
+#[test]
+fn high_offset_reservation_backstops_hole_writes_on_limited_volume() {
+  const FILE_BYTES: u64 = 64 * 1024 * 1024;
+  const FILLER_BYTES: u64 = 16 * 1024 * 1024;
+
+  let Some(root) = std::env::var_os("ASTER_FS_LIMITED_TEST_ROOT") else {
+    eprintln!("ASTER_FS_LIMITED_TEST_ROOT is unset; hole-write assertion skipped");
+    return;
+  };
+  let directory = tempfile::TempDir::with_prefix_in("aster-fs-apple-holes", &root).unwrap();
+  let path = directory.path().join("reservation.bin");
+  let mut file = OpenOptions::new()
+    .read(true)
+    .write(true)
+    .create_new(true)
+    .open(path)
+    .unwrap();
+  file.set_len(FILE_BYTES).unwrap();
+  file.seek(SeekFrom::Start(FILE_BYTES - 4096)).unwrap();
+  file.write_all(&[0x5a; 4096]).unwrap();
+  file.sync_all().unwrap();
+
+  FileExt::allocate(&file, FILE_BYTES).unwrap();
+  assert!(FileExt::allocated_size(&file).unwrap() >= FILE_BYTES);
+
+  let filler_path = directory.path().join("filler.bin");
+  let filler = OpenOptions::new()
+    .read(true)
+    .write(true)
+    .create_new(true)
+    .open(filler_path)
+    .unwrap();
+  FileExt::allocate(&filler, FILLER_BYTES).unwrap();
+  assert!(available_space(&root).unwrap() < FILE_BYTES);
+
+  file.seek(SeekFrom::Start(0)).unwrap();
+  let block = [0xa5; 1024 * 1024];
+  for _ in 0..(FILE_BYTES / block.len() as u64) {
+    file.write_all(&block).unwrap();
+  }
+  file.sync_all().unwrap();
+
+  assert_eq!(file.metadata().unwrap().len(), FILE_BYTES);
+  assert!(FileExt::allocated_size(&file).unwrap() >= FILE_BYTES);
 }

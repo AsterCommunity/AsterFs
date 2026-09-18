@@ -37,7 +37,7 @@ file.allocate(128 * 1024 * 1024)?;
 ## Platform contract
 
 - Linux and other supported Unix targets use `rustix` filesystem primitives and preserve native error codes.
-- Apple targets use all-or-nothing `F_PREALLOCATE` allocation and validate `fstore_t.fst_bytesalloc` before extending logical EOF.
+- Apple targets use all-or-nothing `F_PREALLOCATE` for new extents, validate `fstore_t.fst_bytesalloc` before extending logical EOF, and materialize actual holes when recovering an existing sparse file.
 - Windows uses `FILE_ALLOCATION_INFO` and reports native capacity errors such as `ERROR_DISK_FULL`.
 - Platforms without a real physical-preallocation primitive retain the upstream compatibility fallback; callers that require a hard reservation should restrict deployment to a verified backend.
 

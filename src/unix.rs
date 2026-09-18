@@ -71,21 +71,30 @@ mod apple;
   target_os = "nacl",
   target_vendor = "apple",
 ))]
+/// Applies the platform allocation contract without losing native errors.
 pub(crate) fn allocate(
   fd: rustix::fd::BorrowedFd<'_>,
   len: u64,
+  logical_size: u64,
   allocated_size: u64,
 ) -> std::io::Result<()> {
   #[cfg(target_vendor = "apple")]
   {
-    apple::allocate(fd, len, allocated_size)
+    let _ = allocated_size;
+    apple::allocate(fd, len, logical_size)
   }
 
   #[cfg(not(target_vendor = "apple"))]
   {
-    let _ = allocated_size;
-    rustix::fs::fallocate(fd, rustix::fs::FallocateFlags::empty(), 0, len)
-      .map_err(|error| std::io::Error::from_raw_os_error(error.raw_os_error()))
+    if allocated_size < len {
+      rustix::fs::fallocate(fd, rustix::fs::FallocateFlags::empty(), 0, len)
+        .map_err(|error| std::io::Error::from_raw_os_error(error.raw_os_error()))?;
+    }
+    if logical_size < len {
+      rustix::fs::ftruncate(fd, len)
+        .map_err(|error| std::io::Error::from_raw_os_error(error.raw_os_error()))?;
+    }
+    Ok(())
   }
 }
 

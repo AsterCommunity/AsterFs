@@ -264,7 +264,7 @@ macro_rules! test_mod {
                     "Windows allocate must not extend EOF inside an already-allocated cluster (#13)",
                 );
                 #[cfg(unix)]
-                assert!(file.metadata().unwrap().len() >= 2 * blksize - 1);
+                assert_eq!(2 * blksize, file.metadata().unwrap().len());
             }
 
             /// Regression: `allocate` on a sparse file must reserve

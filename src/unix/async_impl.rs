@@ -16,15 +16,13 @@ macro_rules! allocate {
       use rustix::fd::BorrowedFd;
       // See the sync implementation: sparse files must reach the platform
       // backend, while fully reserved files remain an idempotent no-op.
-      let allocated_size = file.metadata().await?.blocks().saturating_mul(512);
-      if allocated_size >= len {
-        return Ok(());
-      }
+      let metadata = file.metadata().await?;
+      let allocated_size = metadata.blocks().saturating_mul(512);
       // See the comment on `flock` in src/unix.rs for why we use
       // `BorrowedFd::borrow_raw` rather than `AsFd::as_fd`.
       unsafe {
         let borrowed_fd = BorrowedFd::borrow_raw(file.as_raw_fd());
-        $crate::unix::allocate(borrowed_fd, len, allocated_size)
+        $crate::unix::allocate(borrowed_fd, len, metadata.len(), allocated_size)
       }
     }
 
