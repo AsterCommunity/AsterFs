@@ -1,5 +1,15 @@
 # Releases
 
+## Unreleased
+
+### Changes
+
+- Fork `fs4` 1.1.0 as `aster-fs` under AsterCommunity while preserving its public sync and async filesystem APIs and upstream history.
+
+### Fixes
+
+- Make new Apple file reservations all-or-nothing with `F_ALLOCATEALL`, validate the kernel-reported allocated byte count before extending logical EOF, recover actual holes in existing sparse files without moving the file cursor or changing stored data, preserve native `ENOSPC` errors instead of returning false success, and run async allocation through each runtime's blocking pool ([#1](https://github.com/AsterCommunity/AsterFs/issues/1), [AsterDrive #623](https://github.com/AsterCommunity/AsterDrive/issues/623)).
+
 ## 1.1.0
 
 ### Changes

@@ -1,5 +1,56 @@
+macro_rules! spawn_allocate {
+  (tokio, $owned_fd:ident, $len:ident, $logical_size:ident) => {
+    $crate::unix::async_impl::run_tokio_blocking(move || {
+      use rustix::fd::AsFd;
+      $crate::unix::allocate($owned_fd.as_fd(), $len, $logical_size)
+    })
+    .await
+  };
+  (async_std, $owned_fd:ident, $len:ident, $logical_size:ident) => {
+    $crate::unix::async_impl::run_async_std_blocking(move || {
+      use rustix::fd::AsFd;
+      $crate::unix::allocate($owned_fd.as_fd(), $len, $logical_size)
+    })
+    .await
+  };
+  (smol, $owned_fd:ident, $len:ident, $logical_size:ident) => {
+    $crate::unix::async_impl::run_smol_blocking(move || {
+      use rustix::fd::AsFd;
+      $crate::unix::allocate($owned_fd.as_fd(), $len, $logical_size)
+    })
+    .await
+  };
+}
+
+#[cfg(any(
+  feature = "tokio",
+  feature = "fs-err2-tokio",
+  feature = "fs-err3-tokio"
+))]
+async fn run_tokio_blocking(
+  operation: impl FnOnce() -> std::io::Result<()> + Send + 'static,
+) -> std::io::Result<()> {
+  tokio::task::spawn_blocking(operation)
+    .await
+    .map_err(|error| std::io::Error::other(format!("file allocation task failed: {error}")))?
+}
+
+#[cfg(feature = "async-std")]
+async fn run_async_std_blocking(
+  operation: impl FnOnce() -> std::io::Result<()> + Send + 'static,
+) -> std::io::Result<()> {
+  async_std::task::spawn_blocking(operation).await
+}
+
+#[cfg(feature = "smol")]
+async fn run_smol_blocking(
+  operation: impl FnOnce() -> std::io::Result<()> + Send + 'static,
+) -> std::io::Result<()> {
+  smol::unblock(operation).await
+}
+
 macro_rules! allocate {
-  ($file: ty) => {
+  ($file: ty, $runtime:ident) => {
     #[cfg(any(
       target_os = "linux",
       target_os = "freebsd",
@@ -13,26 +64,12 @@ macro_rules! allocate {
       target_os = "tvos"
     ))]
     pub async fn allocate(file: &$file, len: u64) -> std::io::Result<()> {
-      use rustix::{
-        fd::BorrowedFd,
-        fs::{fallocate, FallocateFlags},
-      };
-      // See the comment in the sync implementation: short-circuit on
-      // allocated blocks (not logical EOF) so sparse files still hit
-      // fallocate while already-preallocated files skip the macOS
-      // `F_PREALLOCATE` re-allocate-ENOSPC path (#15).
-      if file.metadata().await?.blocks().saturating_mul(512) >= len {
-        return Ok(());
-      }
-      // See the comment on `flock` in src/unix.rs for why we use
-      // `BorrowedFd::borrow_raw` rather than `AsFd::as_fd`.
-      unsafe {
-        let borrowed_fd = BorrowedFd::borrow_raw(file.as_raw_fd());
-        match fallocate(borrowed_fd, FallocateFlags::empty(), 0, len) {
-          Ok(_) => Ok(()),
-          Err(e) => Err(std::io::Error::from_raw_os_error(e.raw_os_error())),
-        }
-      }
+      use rustix::fd::BorrowedFd;
+      let logical_size = file.metadata().await?.len();
+      let borrowed_fd = unsafe { BorrowedFd::borrow_raw(file.as_raw_fd()) };
+      let owned_fd = rustix::io::dup(borrowed_fd)
+        .map_err(|error| std::io::Error::from_raw_os_error(error.raw_os_error()))?;
+      spawn_allocate!($runtime, owned_fd, len, logical_size)
     }
 
     #[cfg(any(
@@ -114,7 +151,7 @@ macro_rules! test_mod {
 }
 
 cfg_async_std! {
-    pub(crate) mod async_std_impl;
+  pub(crate) mod async_std_impl;
 }
 
 cfg_fs_err2_tokio! {
@@ -130,5 +167,46 @@ cfg_smol! {
 }
 
 cfg_tokio! {
-    pub(crate) mod tokio_impl;
+  pub(crate) mod tokio_impl;
+}
+
+#[cfg(all(test, feature = "tokio"))]
+mod tests {
+  use super::run_tokio_blocking;
+  use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+  };
+  use std::time::{Duration, Instant};
+
+  #[tokio::test(flavor = "current_thread")]
+  async fn tokio_blocking_work_does_not_stall_current_thread_executor() {
+    let heartbeat = Arc::new(AtomicBool::new(false));
+    let stalled = Arc::new(AtomicBool::new(false));
+    let heartbeat_in_operation = heartbeat.clone();
+    let stalled_in_operation = stalled.clone();
+    let operation = tokio::spawn(async move {
+      run_tokio_blocking(move || {
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while !heartbeat_in_operation.load(Ordering::Acquire) {
+          if Instant::now() >= deadline {
+            stalled_in_operation.store(true, Ordering::Release);
+            break;
+          }
+          std::thread::yield_now();
+        }
+        Ok(())
+      })
+      .await
+    });
+
+    tokio::task::yield_now().await;
+    heartbeat.store(true, Ordering::Release);
+    operation.await.unwrap().unwrap();
+
+    assert!(
+      !stalled.load(Ordering::Acquire),
+      "blocking work prevented the current-thread executor from running",
+    );
+  }
 }

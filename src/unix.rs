@@ -59,6 +59,69 @@ macro_rules! lock_impl {
   };
 }
 
+#[cfg(all(
+  target_vendor = "apple",
+  any(
+    feature = "sync",
+    feature = "fs-err2",
+    feature = "fs-err3",
+    feature = "smol",
+    feature = "async-std",
+    feature = "tokio",
+    feature = "fs-err2-tokio",
+    feature = "fs-err3-tokio",
+  )
+))]
+mod apple;
+
+#[cfg(all(
+  any(
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "fuchsia",
+    target_os = "android",
+    target_os = "emscripten",
+    target_os = "nacl",
+    target_vendor = "apple",
+  ),
+  any(
+    feature = "sync",
+    feature = "fs-err2",
+    feature = "fs-err3",
+    feature = "smol",
+    feature = "async-std",
+    feature = "tokio",
+    feature = "fs-err2-tokio",
+    feature = "fs-err3-tokio",
+  )
+))]
+/// Applies the platform allocation contract without losing native errors.
+pub(crate) fn allocate(
+  fd: rustix::fd::BorrowedFd<'_>,
+  len: u64,
+  logical_size: u64,
+) -> std::io::Result<()> {
+  if len == 0 {
+    return Ok(());
+  }
+
+  #[cfg(target_vendor = "apple")]
+  {
+    apple::allocate(fd, len, logical_size)
+  }
+
+  #[cfg(not(target_vendor = "apple"))]
+  {
+    rustix::fs::fallocate(fd, rustix::fs::FallocateFlags::empty(), 0, len)
+      .map_err(|error| std::io::Error::from_raw_os_error(error.raw_os_error()))?;
+    if logical_size < len {
+      rustix::fs::ftruncate(fd, len)
+        .map_err(|error| std::io::Error::from_raw_os_error(error.raw_os_error()))?;
+    }
+    Ok(())
+  }
+}
+
 #[cfg(any(
   feature = "smol",
   feature = "async-std",

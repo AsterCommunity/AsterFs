@@ -247,7 +247,7 @@ mod sealed {
 
 /// Extension trait for file which provides allocation and locking methods.
 ///
-/// This trait is sealed and cannot be implemented for types outside of `fs4`.
+/// This trait is sealed and cannot be implemented for types outside of `aster_fs`.
 ///
 /// ## Notes on File Locks
 ///
@@ -391,7 +391,7 @@ impl<F: FileExt + ?Sized> FileExt for &F {
 /// [`AsyncFileExt::unlock_async`] method is provided for convenience inside
 /// async code, but the underlying `unlock` syscall is still blocking.
 ///
-/// This trait is sealed and cannot be implemented for types outside of `fs4`.
+/// This trait is sealed and cannot be implemented for types outside of `aster_fs`.
 pub trait AsyncFileExt: sealed::Sealed {
   /// Returns the amount of physical space allocated for a file.
   fn allocated_size(&self) -> impl core::future::Future<Output = Result<u64>>;
@@ -501,7 +501,7 @@ pub type BoxFuture<'a, T> = core::pin::Pin<Box<dyn core::future::Future<Output =
 /// dispatch); reach for `DynAsyncFileExt` only when type erasure is
 /// required.
 ///
-/// This trait is sealed and cannot be implemented for types outside of `fs4`.
+/// This trait is sealed and cannot be implemented for types outside of `aster_fs`.
 pub trait DynAsyncFileExt: sealed::Sealed {
   /// Returns the amount of physical space allocated for a file.
   fn allocated_size(&self) -> BoxFuture<'_, Result<u64>>;

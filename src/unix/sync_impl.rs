@@ -21,27 +21,17 @@ macro_rules! allocate {
       target_os = "tvos"
     ))]
     pub fn allocate(file: &$file, len: u64) -> std::io::Result<()> {
-      use rustix::{
-        fd::BorrowedFd,
-        fs::{fallocate, FallocateFlags},
-      };
+      use rustix::fd::BorrowedFd;
       // Short-circuit when blocks are already reserved to at least `len`.
-      // Using allocated size (not logical EOF) avoids the macOS
-      // `F_PREALLOCATE` re-allocate-ENOSPC issue (#15) without falsely
-      // skipping sparse files whose logical length exceeds their
-      // allocation.
-      if file.metadata()?.blocks().saturating_mul(512) >= len {
-        return Ok(());
-      }
+      // Using allocated size (not logical EOF) preserves sparse-file
+      // recovery and makes the Apple backend request only missing blocks.
+      let logical_size = file.metadata()?.len();
       // See the comment on `flock` in src/unix.rs for why we route
       // through `AsRawFd` + `BorrowedFd::borrow_raw` instead of
       // `AsFd::as_fd`.
       unsafe {
         let borrowed_fd = BorrowedFd::borrow_raw(file.as_raw_fd());
-        match fallocate(borrowed_fd, FallocateFlags::empty(), 0, len) {
-          Ok(_) => Ok(()),
-          Err(e) => Err(std::io::Error::from_raw_os_error(e.raw_os_error())),
-        }
+        $crate::unix::allocate(borrowed_fd, len, logical_size)
       }
     }
 

@@ -28,11 +28,10 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
   RUST_BACKTRACE: 1
-  nightly: nightly
 
 jobs:
   # This represents the minimum Rust version supported by
-  # fs4. Updating this should be done in a dedicated PR.
+  # AsterFs. Updating this should be done in a dedicated PR.
   #
   # Tests are not run as tests may require newer versions of
   # rust.
@@ -80,7 +79,7 @@ jobs:
     steps:
     - uses: actions/checkout@v6
     - name: Install Rust
-      run: rustup update stable && rustup default stable && rustup component add rustfmt
+      run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt && rustup default 1.95.0
     - name: Check formatting
       run: cargo fmt --all -- --check
 
@@ -98,7 +97,7 @@ jobs:
     - uses: actions/checkout@v6
     - name: Install Rust
       # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
-      run: rustup update stable --no-self-update && rustup default stable && rustup component add clippy
+      run: rustup toolchain install 1.95.0 --profile minimal --component clippy && rustup default 1.95.0
     - name: Install cargo-hack
       run: cargo install cargo-hack
     - name: Apply clippy lints
@@ -134,7 +133,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cross-
       - name: Install Rust
-        run: rustup update stable && rustup default stable
+        run: rustup toolchain install 1.95.0 --profile minimal && rustup default 1.95.0
       - name: Install MinGW toolchain for Windows GNU cross targets
         # windows-sys >= 0.61 generates import libraries via `dlltool`
         # when building for *-pc-windows-gnu. ubuntu-latest ships the
@@ -171,7 +170,7 @@ jobs:
           ${{ runner.os }}-build-
     - name: Install Rust
       # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
-      run: rustup update stable --no-self-update && rustup default stable
+      run: rustup toolchain install 1.95.0 --profile minimal && rustup default 1.95.0
     - name: Install cargo-hack
       run: cargo install cargo-hack
     - name: Run build
@@ -200,8 +199,18 @@ jobs:
           ${{ runner.os }}-test-
     - name: Install Rust
       # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
-      run: rustup update stable --no-self-update && rustup default stable
+      run: rustup toolchain install 1.95.0 --profile minimal && rustup default 1.95.0
     - name: Install cargo-hack
       run: cargo install cargo-hack
     - name: Run test
       run: cargo hack test --each-feature  -- --test-threads 1
+
+  apple-preallocation:
+    name: apple preallocation contract
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v6
+    - name: Install pinned Rust toolchain
+      run: rustup toolchain install 1.95.0 --profile minimal && rustup default 1.95.0
+    - name: Verify APFS allocation and ENOSPC behavior
+      run: scripts/test-apple-preallocation.sh

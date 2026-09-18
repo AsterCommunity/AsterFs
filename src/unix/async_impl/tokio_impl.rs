@@ -3,7 +3,7 @@ use std::os::unix::io::AsRawFd;
 use tokio::fs::File;
 
 lock_impl!(File);
-allocate!(File);
+allocate!(File, tokio);
 allocate_size!(File);
 
 test_mod! {
