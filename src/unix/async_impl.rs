@@ -1,26 +1,52 @@
 macro_rules! spawn_allocate {
   (tokio, $owned_fd:ident, $len:ident, $logical_size:ident) => {
-    tokio::task::spawn_blocking(move || {
+    $crate::unix::async_impl::run_tokio_blocking(move || {
       use rustix::fd::AsFd;
       $crate::unix::allocate($owned_fd.as_fd(), $len, $logical_size)
     })
     .await
-    .map_err(|error| std::io::Error::other(format!("file allocation task failed: {error}")))?
   };
   (async_std, $owned_fd:ident, $len:ident, $logical_size:ident) => {
-    async_std::task::spawn_blocking(move || {
+    $crate::unix::async_impl::run_async_std_blocking(move || {
       use rustix::fd::AsFd;
       $crate::unix::allocate($owned_fd.as_fd(), $len, $logical_size)
     })
     .await
   };
   (smol, $owned_fd:ident, $len:ident, $logical_size:ident) => {
-    smol::unblock(move || {
+    $crate::unix::async_impl::run_smol_blocking(move || {
       use rustix::fd::AsFd;
       $crate::unix::allocate($owned_fd.as_fd(), $len, $logical_size)
     })
     .await
   };
+}
+
+#[cfg(any(
+  feature = "tokio",
+  feature = "fs-err2-tokio",
+  feature = "fs-err3-tokio"
+))]
+async fn run_tokio_blocking(
+  operation: impl FnOnce() -> std::io::Result<()> + Send + 'static,
+) -> std::io::Result<()> {
+  tokio::task::spawn_blocking(operation)
+    .await
+    .map_err(|error| std::io::Error::other(format!("file allocation task failed: {error}")))?
+}
+
+#[cfg(feature = "async-std")]
+async fn run_async_std_blocking(
+  operation: impl FnOnce() -> std::io::Result<()> + Send + 'static,
+) -> std::io::Result<()> {
+  async_std::task::spawn_blocking(operation).await
+}
+
+#[cfg(feature = "smol")]
+async fn run_smol_blocking(
+  operation: impl FnOnce() -> std::io::Result<()> + Send + 'static,
+) -> std::io::Result<()> {
+  smol::unblock(operation).await
 }
 
 macro_rules! allocate {
@@ -141,5 +167,46 @@ cfg_smol! {
 }
 
 cfg_tokio! {
-    pub(crate) mod tokio_impl;
+  pub(crate) mod tokio_impl;
+}
+
+#[cfg(all(test, feature = "tokio"))]
+mod tests {
+  use super::run_tokio_blocking;
+  use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+  };
+  use std::time::{Duration, Instant};
+
+  #[tokio::test(flavor = "current_thread")]
+  async fn tokio_blocking_work_does_not_stall_current_thread_executor() {
+    let heartbeat = Arc::new(AtomicBool::new(false));
+    let stalled = Arc::new(AtomicBool::new(false));
+    let heartbeat_in_operation = heartbeat.clone();
+    let stalled_in_operation = stalled.clone();
+    let operation = tokio::spawn(async move {
+      run_tokio_blocking(move || {
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while !heartbeat_in_operation.load(Ordering::Acquire) {
+          if Instant::now() >= deadline {
+            stalled_in_operation.store(true, Ordering::Release);
+            break;
+          }
+          std::thread::yield_now();
+        }
+        Ok(())
+      })
+      .await
+    });
+
+    tokio::task::yield_now().await;
+    heartbeat.store(true, Ordering::Release);
+    operation.await.unwrap().unwrap();
+
+    assert!(
+      !stalled.load(Ordering::Acquire),
+      "blocking work prevented the current-thread executor from running",
+    );
+  }
 }
