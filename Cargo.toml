@@ -22,9 +22,9 @@ async-std = ["dep:async-std"]
 tokio = ["dep:tokio"]
 smol = ["dep:smol"]
 fs-err2 = ["dep:fs-err2", "fs-err2/io_safety"]
-fs-err2-tokio = ["fs-err2", "fs-err2/tokio"]
+fs-err2-tokio = ["fs-err2", "fs-err2/tokio", "dep:tokio"]
 fs-err3 = ["dep:fs-err3"]
-fs-err3-tokio = ["fs-err3", "fs-err3/tokio"]
+fs-err3-tokio = ["fs-err3", "fs-err3/tokio", "dep:tokio"]
 
 
 [target.'cfg(not(windows))'.dependencies]
@@ -42,9 +42,7 @@ async-std = { version = "1", optional = true }
 fs-err2 = { package = "fs-err", version = "2", optional = true }
 fs-err3 = { package = "fs-err", version = "3", optional = true }
 smol = { version = "2", optional = true }
-tokio = { version = "1", optional = true, default-features = false, features = [
-  "fs",
-] }
+tokio = { version = "1", optional = true, default-features = false, features = ["fs", "rt"] }
 
 [dev-dependencies]
 async-std = { version = "1", features = ["attributes"] }
@@ -65,3 +63,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 name = "apple_preallocation"
 path = "tests/apple_preallocation.rs"
 required-features = ["sync"]
+
+[[test]]
+name = "apple_async_preallocation"
+path = "tests/apple_async_preallocation.rs"
+required-features = ["tokio"]

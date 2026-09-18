@@ -1,5 +1,30 @@
+macro_rules! spawn_allocate {
+  (tokio, $owned_fd:ident, $len:ident, $logical_size:ident) => {
+    tokio::task::spawn_blocking(move || {
+      use rustix::fd::AsFd;
+      $crate::unix::allocate($owned_fd.as_fd(), $len, $logical_size)
+    })
+    .await
+    .map_err(|error| std::io::Error::other(format!("file allocation task failed: {error}")))?
+  };
+  (async_std, $owned_fd:ident, $len:ident, $logical_size:ident) => {
+    async_std::task::spawn_blocking(move || {
+      use rustix::fd::AsFd;
+      $crate::unix::allocate($owned_fd.as_fd(), $len, $logical_size)
+    })
+    .await
+  };
+  (smol, $owned_fd:ident, $len:ident, $logical_size:ident) => {
+    smol::unblock(move || {
+      use rustix::fd::AsFd;
+      $crate::unix::allocate($owned_fd.as_fd(), $len, $logical_size)
+    })
+    .await
+  };
+}
+
 macro_rules! allocate {
-  ($file: ty) => {
+  ($file: ty, $runtime:ident) => {
     #[cfg(any(
       target_os = "linux",
       target_os = "freebsd",
@@ -14,16 +39,11 @@ macro_rules! allocate {
     ))]
     pub async fn allocate(file: &$file, len: u64) -> std::io::Result<()> {
       use rustix::fd::BorrowedFd;
-      // See the sync implementation: sparse files must reach the platform
-      // backend, while fully reserved files remain an idempotent no-op.
-      let metadata = file.metadata().await?;
-      let allocated_size = metadata.blocks().saturating_mul(512);
-      // See the comment on `flock` in src/unix.rs for why we use
-      // `BorrowedFd::borrow_raw` rather than `AsFd::as_fd`.
-      unsafe {
-        let borrowed_fd = BorrowedFd::borrow_raw(file.as_raw_fd());
-        $crate::unix::allocate(borrowed_fd, len, metadata.len(), allocated_size)
-      }
+      let logical_size = file.metadata().await?.len();
+      let borrowed_fd = unsafe { BorrowedFd::borrow_raw(file.as_raw_fd()) };
+      let owned_fd = rustix::io::dup(borrowed_fd)
+        .map_err(|error| std::io::Error::from_raw_os_error(error.raw_os_error()))?;
+      spawn_allocate!($runtime, owned_fd, len, logical_size)
     }
 
     #[cfg(any(
@@ -105,7 +125,7 @@ macro_rules! test_mod {
 }
 
 cfg_async_std! {
-    pub(crate) mod async_std_impl;
+  pub(crate) mod async_std_impl;
 }
 
 cfg_fs_err2_tokio! {

@@ -25,14 +25,13 @@ macro_rules! allocate {
       // Short-circuit when blocks are already reserved to at least `len`.
       // Using allocated size (not logical EOF) preserves sparse-file
       // recovery and makes the Apple backend request only missing blocks.
-      let metadata = file.metadata()?;
-      let allocated_size = metadata.blocks().saturating_mul(512);
+      let logical_size = file.metadata()?.len();
       // See the comment on `flock` in src/unix.rs for why we route
       // through `AsRawFd` + `BorrowedFd::borrow_raw` instead of
       // `AsFd::as_fd`.
       unsafe {
         let borrowed_fd = BorrowedFd::borrow_raw(file.as_raw_fd());
-        $crate::unix::allocate(borrowed_fd, len, metadata.len(), allocated_size)
+        $crate::unix::allocate(borrowed_fd, len, logical_size)
       }
     }
 

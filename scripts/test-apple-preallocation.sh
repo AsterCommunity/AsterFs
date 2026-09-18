@@ -15,4 +15,7 @@ trap cleanup EXIT
 hdiutil create -size 128m -fs APFS -volname AsterFsProbe "${image_path}"
 hdiutil attach -nobrowse -mountpoint "${mount_path}" "${image_path}"
 ASTER_FS_LIMITED_TEST_ROOT="${mount_path}" \
-  cargo test --all-features --test apple_preallocation -- --test-threads 1 --nocapture
+  cargo test --all-features \
+  --test apple_preallocation \
+  --test apple_async_preallocation \
+  -- --test-threads 1 --nocapture

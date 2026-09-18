@@ -43,6 +43,8 @@ file.allocate(128 * 1024 * 1024)?;
 
 Native runtime tests cover Linux, macOS, and Windows. The macOS CI path mounts a disposable size-limited APFS image to prove that an oversized request returns `ENOSPC` without leaving a partial allocation.
 
+Async allocation delegates blocking filesystem work to the selected runtime's blocking pool, including sparse-hole recovery on Apple filesystems.
+
 ## Compatibility
 
 - Package: `aster-fs`
