@@ -59,17 +59,41 @@ macro_rules! lock_impl {
   };
 }
 
-#[cfg(target_vendor = "apple")]
+#[cfg(all(
+  target_vendor = "apple",
+  any(
+    feature = "sync",
+    feature = "fs-err2",
+    feature = "fs-err3",
+    feature = "smol",
+    feature = "async-std",
+    feature = "tokio",
+    feature = "fs-err2-tokio",
+    feature = "fs-err3-tokio",
+  )
+))]
 mod apple;
 
-#[cfg(any(
-  target_os = "linux",
-  target_os = "freebsd",
-  target_os = "fuchsia",
-  target_os = "android",
-  target_os = "emscripten",
-  target_os = "nacl",
-  target_vendor = "apple",
+#[cfg(all(
+  any(
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "fuchsia",
+    target_os = "android",
+    target_os = "emscripten",
+    target_os = "nacl",
+    target_vendor = "apple",
+  ),
+  any(
+    feature = "sync",
+    feature = "fs-err2",
+    feature = "fs-err3",
+    feature = "smol",
+    feature = "async-std",
+    feature = "tokio",
+    feature = "fs-err2-tokio",
+    feature = "fs-err3-tokio",
+  )
 ))]
 /// Applies the platform allocation contract without losing native errors.
 pub(crate) fn allocate(

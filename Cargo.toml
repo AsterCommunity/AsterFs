@@ -60,3 +60,8 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [workspace]
+
+[[test]]
+name = "apple_preallocation"
+path = "tests/apple_preallocation.rs"
+required-features = ["sync"]

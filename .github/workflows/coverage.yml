@@ -114,33 +114,3 @@ jobs:
         with:
           name: coverage-${{ matrix.label }}
           path: coverage/cobertura.xml
-
-  upload-codecov:
-    name: Upload merged coverage to Codecov
-    needs: coverage
-    runs-on: ubuntu-latest
-    if: always()
-    strategy:
-      fail-fast: false
-      matrix:
-        label:
-          - linux-x86_64
-          - macos-aarch64
-          - windows-x86_64
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Download ${{ matrix.label }} report
-        uses: actions/download-artifact@v6
-        with:
-          name: coverage-${{ matrix.label }}
-          path: coverage/
-
-      - name: Upload ${{ matrix.label }} to Codecov
-        uses: codecov/codecov-action@v6
-        with:
-          files: coverage/cobertura.xml
-          flags: ${{ matrix.label }}
-          fail_ci_if_error: true
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

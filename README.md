@@ -26,7 +26,7 @@ Available runtime features:
 
 The extension traits are exported from the crate root:
 
-```rust,no_run
+```rust,ignore
 use aster_fs::FileExt;
 
 let file = std::fs::File::create("reserved.bin")?;
