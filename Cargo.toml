@@ -1,14 +1,17 @@
 [package]
-name = "fs4"
-# NB: When modifying, also modify html_root_url in lib.rs
-version = "1.1.0"
+name = "aster-fs"
+version = "0.1.0"
 rust-version = "1.75.0"
-authors = ["Dan Burkert <dan@danburkert.com>", "Al Liu <scygliu1@gmail.com>"]
+authors = [
+  "AsterCommunity Contributors <contributors@astercosm.com>",
+  "Dan Burkert <dan@danburkert.com>",
+  "Al Liu <scygliu1@gmail.com>",
+]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/al8n/fs4"
-documentation = "https://docs.rs/fs4"
-description = "No libc, pure Rust cross-platform file locks. Original fs2, now supports async and replace libc by rustix."
-keywords = ["file", "fs2", "lock", "duplicate", "flock"]
+repository = "https://github.com/AsterCommunity/AsterFs"
+documentation = "https://docs.rs/aster-fs"
+description = "Auditable cross-platform file locking, allocation, and filesystem utilities for sync and async Rust."
+keywords = ["file", "filesystem", "lock", "preallocate", "async"]
 categories = ["filesystem", "external-ffi-bindings", "asynchronous"]
 edition = "2021"
 
@@ -26,6 +29,9 @@ fs-err3-tokio = ["fs-err3", "fs-err3/tokio"]
 
 [target.'cfg(not(windows))'.dependencies]
 rustix = { version = "1", features = ["fs"] }
+
+[target.'cfg(target_vendor = "apple")'.dependencies]
+libc = "0.2"
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.61"
@@ -52,3 +58,5 @@ tokio = { version = "1", features = ["full"] }
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
+
+[workspace]

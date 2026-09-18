@@ -59,6 +59,36 @@ macro_rules! lock_impl {
   };
 }
 
+#[cfg(target_vendor = "apple")]
+mod apple;
+
+#[cfg(any(
+  target_os = "linux",
+  target_os = "freebsd",
+  target_os = "fuchsia",
+  target_os = "android",
+  target_os = "emscripten",
+  target_os = "nacl",
+  target_vendor = "apple",
+))]
+pub(crate) fn allocate(
+  fd: rustix::fd::BorrowedFd<'_>,
+  len: u64,
+  allocated_size: u64,
+) -> std::io::Result<()> {
+  #[cfg(target_vendor = "apple")]
+  {
+    apple::allocate(fd, len, allocated_size)
+  }
+
+  #[cfg(not(target_vendor = "apple"))]
+  {
+    let _ = allocated_size;
+    rustix::fs::fallocate(fd, rustix::fs::FallocateFlags::empty(), 0, len)
+      .map_err(|error| std::io::Error::from_raw_os_error(error.raw_os_error()))
+  }
+}
+
 #[cfg(any(
   feature = "smol",
   feature = "async-std",

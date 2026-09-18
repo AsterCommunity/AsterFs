@@ -21,13 +21,12 @@ env:
   CARGO_TERM_COLOR: always
 
 # Matrix dimensions covered for Codecov to reflect the per-OS split of
-# fs4's platform code:
+# AsterFs platform code:
 #
 # - linux-x86_64:   src/unix.rs + src/unix/**, exercising rustix's
 #                   Linux `fallocate` path and `statvfs`.
-# - macos-aarch64:  src/unix.rs + src/unix/**, exercising rustix's
-#                   macOS `F_PREALLOCATE` path (different enough from
-#                   Linux that issue #15 was macOS-specific).
+# - macos-aarch64:  src/unix.rs + src/unix/**, exercising AsterFs's
+#                   all-or-nothing macOS `F_PREALLOCATE` backend.
 # - windows-x86_64: src/windows.rs + src/windows/**, exercising the
 #                   Win32 lock + `FILE_ALLOCATION_INFO` APIs.
 #
@@ -70,14 +69,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install Rust stable
+      - name: Install pinned Rust toolchain
         # `llvm-tools-preview` is required by `cargo tarpaulin --engine
         # llvm`, which is the only tarpaulin engine that works
         # uniformly on Linux + macOS + Windows.
         shell: bash
         run: |
-          rustup toolchain install stable --component llvm-tools-preview --profile minimal
-          rustup default stable
+          rustup toolchain install 1.95.0 --component llvm-tools-preview --profile minimal
+          rustup default 1.95.0
 
       - name: Install cargo-tarpaulin
         uses: taiki-e/install-action@v2
