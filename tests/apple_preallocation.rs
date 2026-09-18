@@ -1,6 +1,6 @@
 #![cfg(target_vendor = "apple")]
 
-use aster_fs::{available_space, FileExt};
+use aster_fs::{allocation_granularity, available_space, FileExt};
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
 
@@ -24,6 +24,30 @@ fn large_reservation_is_fully_allocated() {
     FileExt::allocated_size(&file).unwrap() >= LARGE_RESERVATION_BYTES,
     "Apple allocation must reserve every requested byte",
   );
+}
+
+#[test]
+fn logical_extension_reuses_allocated_cluster_rounding() {
+  let directory = tempfile::TempDir::with_prefix("aster-fs-apple-rounding").unwrap();
+  let path = directory.path().join("reservation.bin");
+  let file = OpenOptions::new()
+    .read(true)
+    .write(true)
+    .create_new(true)
+    .open(&path)
+    .unwrap();
+  let block_size = allocation_granularity(directory.path()).unwrap();
+  let first_len = 2 * block_size - 1;
+  let second_len = 2 * block_size;
+
+  FileExt::allocate(&file, first_len).unwrap();
+  let first_allocation = FileExt::allocated_size(&file).unwrap();
+  assert!(first_allocation >= second_len);
+
+  FileExt::allocate(&file, second_len).unwrap();
+
+  assert_eq!(file.metadata().unwrap().len(), second_len);
+  assert_eq!(FileExt::allocated_size(&file).unwrap(), first_allocation);
 }
 
 #[test]

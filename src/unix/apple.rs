@@ -14,7 +14,9 @@ pub(super) fn allocate(fd: BorrowedFd<'_>, len: u64, logical_size: u64) -> io::R
   }
 
   if logical_size < len {
-    reserve_from_physical_end(fd, len - logical_size)?;
+    let allocated_size = allocated_size(fd)?;
+    let missing = len.saturating_sub(allocated_size.min(len));
+    reserve_from_physical_end(fd, missing)?;
     let result = unsafe { libc::ftruncate(fd.as_raw_fd(), target_len) };
     if result == -1 {
       return Err(io::Error::last_os_error());
@@ -22,6 +24,15 @@ pub(super) fn allocate(fd: BorrowedFd<'_>, len: u64, logical_size: u64) -> io::R
   }
 
   Ok(())
+}
+
+/// Reads the file's current block allocation after all logical holes are materialized.
+fn allocated_size(fd: BorrowedFd<'_>) -> io::Result<u64> {
+  let stat =
+    rustix::fs::fstat(fd).map_err(|error| io::Error::from_raw_os_error(error.raw_os_error()))?;
+  let blocks = u64::try_from(stat.st_blocks)
+    .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "negative allocated block count"))?;
+  Ok(blocks.saturating_mul(512))
 }
 
 /// Reserves new extents atomically beyond the file's current physical end.
